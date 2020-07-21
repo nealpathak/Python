@@ -1,22 +1,48 @@
+import bs4 as bs
 import datetime as dt
-import matplotlib.pyplot as plt
-from matplotlib import style
+import os
 import pandas as pd
 import pandas_datareader.data as web
+import pickle
+import requests
 
-style.use('ggplot')
+def save_sp500_tickers():
+	resp = requests.get('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
+	soup = bs.BeautifulSoup(resp.text, "lxml")
+	table = soup.find('table', {'class':'wikitable sortable'})
+	tickers = []
+	for row in table.findAll('tr')[1:]:
+		ticker = row.findAll('td')[0].text.strip()
+		tickers.append(ticker)
 
-df = pd.read_csv('tsla.csv', parse_dates = True, index_col = 0)
+	with open("sp500tickers.pickle", "wb") as f:
+		pickle.dump(tickers, f)
 
-df['100ma'] = df['Adj Close'].rolling(window=100, min_periods = 0).mean()
-df.dropna(inplace=True)
-print(df.head())
+	print(tickers)
 
-ax1 = plt.subplot2grid((6,1), (0,0), rowspan=5, colspan=1)
-ax2 = plt.subplot2grid((6,1), (5,0), rowspan=1, colspan=1, sharex=ax1)
+	return tickers
 
-ax1.plot(df.index, df['Adj Close'])
-ax1.plot(df.index, df['100ma'])
-ax2.bar(df.index, df['Volume'])
 
-plt.show()
+
+def get_data_from_yahoo(reload_sp500=False):
+
+	if reload_sp500:
+		tickers = save_sp500_tickers()
+	else:
+		with open("sp500tickers.pickle", "rb") as f:
+			tickers = pickle.load(f)
+
+	if not os.path.exists('stocks_dfs'):
+		os.makedirs('stocks_dfs')
+
+	start = dt.datetime(2000,1,1)
+	end = dt.datetime(2020,7,16)
+
+	for ticker in tickers:
+		if not os.path.exists('stocks_dfs/{}.csv'.format(ticker)):
+			df = web.DataReader(ticker, 'yahoo', start, end)
+			df.to_csv('stocks_dfs/{}.csv'.format(ticker))
+		else:
+			print('Already have {}'.format(ticker))
+
+get_data_from_yahoo()
