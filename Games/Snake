@@ -1,0 +1,104 @@
+import tkinter as tk
+import random
+
+# Constants
+WIDTH = 400
+HEIGHT = 400
+DELAY = 100
+SIZE = 20
+
+class SnakeGame:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Snake Game")
+
+        # Canvas setup
+        self.canvas = tk.Canvas(self.master, width=WIDTH, height=HEIGHT, bg="black")
+        self.canvas.pack()
+
+        # Snake initial position and direction
+        self.snake = [(WIDTH // 2, HEIGHT // 2)]
+        self.direction = "Right"
+
+        # Food initial position
+        self.food = self.create_food()
+
+        # Key bindings
+        self.master.bind("<Up>", lambda e: self.change_direction("Up"))
+        self.master.bind("<Down>", lambda e: self.change_direction("Down"))
+        self.master.bind("<Left>", lambda e: self.change_direction("Left"))
+        self.master.bind("<Right>", lambda e: self.change_direction("Right"))
+
+        # Menu setup
+        self.menu = tk.Menu(self.master)
+        self.master.config(menu=self.menu)
+
+        self.game_menu = tk.Menu(self.menu)
+        self.menu.add_cascade(label="Game", menu=self.game_menu)
+        self.game_menu.add_command(label="New Game", command=self.new_game)
+        self.game_menu.add_command(label="Exit", command=self.master.quit)
+
+        # Start game
+        self.game_over = False
+        self.game_loop()
+
+    def create_food(self):
+        x = random.randint(0, WIDTH // SIZE - 1) * SIZE
+        y = random.randint(0, HEIGHT // SIZE - 1) * SIZE
+        self.canvas.create_oval(x, y, x + SIZE, y + SIZE, fill="red", outline="")
+        return (x, y)
+
+    def move_snake(self):
+        x, y = self.snake[0]
+        if self.direction == "Up":
+            y -= SIZE
+        elif self.direction == "Down":
+            y += SIZE
+        elif self.direction == "Left":
+            x -= SIZE
+        elif self.direction == "Right":
+            x += SIZE
+        self.snake.insert(0, (x, y))
+        self.canvas.create_rectangle(x, y, x + SIZE, y + SIZE, fill="lime green", outline="")
+
+        if self.snake[0] == self.food:
+            self.food = self.create_food()
+        else:
+            self.canvas.delete(*self.snake[-1])
+            self.snake.pop()
+
+        if self.check_collision():
+            self.game_over = True
+
+    def change_direction(self, direction):
+        if not self.game_over:
+            if (direction == "Up" and self.direction != "Down") or \
+               (direction == "Down" and self.direction != "Up") or \
+               (direction == "Left" and self.direction != "Right") or \
+               (direction == "Right" and self.direction != "Left"):
+                self.direction = direction
+
+    def check_collision(self):
+        x, y = self.snake[0]
+        if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT or (x, y) in self.snake[1:]:
+            self.canvas.create_text(WIDTH // 2, HEIGHT // 2, text="Game Over!", fill="white", font=("Arial", 20))
+            return True
+        return False
+
+    def game_loop(self):
+        if not self.game_over:
+            self.move_snake()
+            self.master.after(DELAY, self.game_loop)
+
+    def new_game(self):
+        self.canvas.delete(tk.ALL)
+        self.snake = [(WIDTH // 2, HEIGHT // 2)]
+        self.direction = "Right"
+        self.food = self.create_food()
+        self.game_over = False
+        self.game_loop()
+
+root = tk.Tk()
+root.resizable(False, False)
+game = SnakeGame(root)
+root.mainloop()
