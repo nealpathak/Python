@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Step 1: Set up the webdriver (Edge in this example)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 webdriver_path = os.path.join(current_dir, 'msedgedriver.exe')
-download_dir = r"C:\Users\npath\Desktop\19-cv-1046"
+download_dir = os.path.join(current_dir, 'Rename')
 if not os.path.exists(webdriver_path):
     raise FileNotFoundError(f"The WebDriver executable was not found at path: {webdriver_path}")
 
@@ -51,7 +51,7 @@ try:
     logging.info("Selected the first radio button.")
 
     # Step 5: Enter the case number
-    case_number = "19-cv-1046"
+    case_number = "24-EV03-0536"
     case_number_input = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "CaseSearchValue")))
     case_number_input.send_keys(case_number)
     case_number_input.send_keys(Keys.ENTER)
@@ -97,19 +97,24 @@ try:
 
             # Wait for the document to load and locate the download link
             download_link = WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '.pdf')]"))
+                EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '.pdf') or contains(@href, '.tif') or contains(@href, '.tiff')]"))
             )
             ActionChains(driver).move_to_element(download_link).perform()  # Scroll into view if needed
-            pdf_url = download_link.get_attribute('href')
+            file_url = download_link.get_attribute('href')
+
+            # Determine the file extension
+            file_extension = os.path.splitext(file_url)[1]
+            if not file_extension:
+                raise ValueError("Unable to determine file extension.")
 
             # Download the file using requests with retry logic and User-Agent
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
             retries = 3
             for attempt in range(retries):
                 try:
-                    response = requests.get(pdf_url, headers=headers, timeout=10)
+                    response = requests.get(file_url, headers=headers, timeout=10)
                     if response.status_code == 200:
-                        file_name = os.path.join(download_dir, f"{document_date}_{document_title}.pdf")
+                        file_name = os.path.join(download_dir, f"{document_date}_{document_title}{file_extension}")
                         with open(file_name, 'wb') as file:
                             file.write(response.content)
                         logging.info(f"Downloaded document: {file_name}")
