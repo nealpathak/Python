@@ -4,10 +4,13 @@ from selenium.webdriver.edge.service import Service
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 import requests
 import os
 import time
 import logging
+from datetime import datetime
+import re
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -66,58 +69,68 @@ try:
     case_summary_element.click()
     logging.info("Clicked on the case link to access the full list of filed documents.")
 
-    # Step 8: Locate the first filed document and download it directly
-    try:
-        time.sleep(5)  # Increase delay to ensure page is fully loaded
-        first_document = WebDriverWait(driver, 40).until(
-            EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'ViewDocumentFragment.aspx')]")
-        ))
-        link = first_document
-        document_url = link.get_attribute('href')
+    # Step 8: Locate all filed documents and download them
+    time.sleep(10)  # Increase delay to ensure page is fully loaded
+    document_rows = WebDriverWait(driver, 40).until(
+        EC.presence_of_all_elements_located((By.XPATH, "//tr[td/a[contains(@href, 'ViewDocumentFragment.aspx')]]"))
+    )
 
-        # Navigate to the document fragment link
-        driver.get(document_url)
-        logging.info("Navigated to the document fragment link.")
+    for document_row in document_rows:
+        try:
+            document_link = document_row.find_element(By.XPATH, ".//a[contains(@href, 'ViewDocumentFragment.aspx')]")
+            date_cell = document_row.find_element(By.XPATH, ".//td[1]")
+            document_date_raw = date_cell.text.strip()
 
-        # Wait for the document to load and locate the download link
-        download_link = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '.pdf')]")
-        ))
-        pdf_url = download_link.get_attribute('href')
+            # Use regex to extract the date in MM/DD/YYYY format
+            date_match = re.search(r"\b(\d{2}/\d{2}/\d{4})\b", document_date_raw)
+            if date_match:
+                document_date = datetime.strptime(date_match.group(1), "%m/%d/%Y").strftime("%Y.%m.%d")
+            else:
+                raise ValueError(f"Failed to extract date from text: {document_date_raw}")
 
-        # Download the file using requests with retry logic and User-Agent
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
-        retries = 3
-        for attempt in range(retries):
-            try:
-                response = requests.get(pdf_url, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    file_name = os.path.join(download_dir, "document.pdf")
-                    with open(file_name, 'wb') as file:
-                        file.write(response.content)
-                    logging.info(f"Downloaded the first document to: {file_name}")
-                    break
-                else:
-                    logging.error(f"Failed to download the document. HTTP Status Code: {response.status_code}")
-            except requests.exceptions.RequestException as e:
-                logging.error(f"Attempt {attempt + 1} failed with error: {e}")
-                if attempt < retries - 1:
-                    time.sleep(5)
-                else:
-                    logging.error("All download attempts failed.")
+            document_title = document_link.text.strip().replace("/", "-").replace(" ", "_")
 
-    except Exception as e:
-        logging.error(f"Failed to locate or download the first document: {e}")
-        driver.save_screenshot(os.path.join(current_dir, 'error_screenshot.png'))
-        with open(os.path.join(current_dir, 'error_page_source.html'), 'w', encoding='utf-8') as f:
-            f.write(driver.page_source)
-        logging.info("Saved screenshot and page source of the error state.")
+            # Navigate to the document fragment link
+            document_url = document_link.get_attribute('href')
+            driver.get(document_url)
+            logging.info("Navigated to the document fragment link.")
 
-    except Exception as e:
-        logging.error(f"Failed to locate or download the first document: {e}")
+            # Wait for the document to load and locate the download link
+            download_link = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '.pdf')]"))
+            )
+            ActionChains(driver).move_to_element(download_link).perform()  # Scroll into view if needed
+            pdf_url = download_link.get_attribute('href')
 
-    # Debug: Indicate the script completion
-    logging.info("Script completed.")
+            # Download the file using requests with retry logic and User-Agent
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    response = requests.get(pdf_url, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        file_name = os.path.join(download_dir, f"{document_date}_{document_title}.pdf")
+                        with open(file_name, 'wb') as file:
+                            file.write(response.content)
+                        logging.info(f"Downloaded document: {file_name}")
+                        break
+                    else:
+                        logging.error(f"Failed to download the document. HTTP Status Code: {response.status_code}")
+                except requests.exceptions.RequestException as e:
+                    logging.error(f"Attempt {attempt + 1} failed with error: {e}")
+                    if attempt < retries - 1:
+                        time.sleep(5)
+                    else:
+                        logging.error("All download attempts failed.")
+        except Exception as e:
+            logging.error(f"Failed to locate or download a document: {e}")
+
+except Exception as e:
+    logging.error(f"Failed to complete the process: {e}")
+    driver.save_screenshot(os.path.join(current_dir, 'error_screenshot.png'))
+    with open(os.path.join(current_dir, 'error_page_source.html'), 'w', encoding='utf-8') as f:
+        f.write(driver.page_source)
+    logging.info("Saved screenshot and page source of the error state.")
 
 finally:
     driver.quit()
